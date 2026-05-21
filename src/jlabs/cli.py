@@ -1,8 +1,11 @@
 """Usage: jlabs [--version] [-h | --help]"""
 
-from docopt import docopt
 import logging
+
+from docopt import docopt
+
 from jlabs import controller, utils
+
 logger = logging.getLogger(__name__)
 
 
@@ -12,4 +15,3 @@ def run():
     logger.info("Starting jlabs")
     logger.debug(f"Arguments passed in:\n{args}")
     controller.main_menu()
-

@@ -3,11 +3,13 @@ import logging
 import os
 import platform
 import time
-import tomlkit
 from datetime import datetime
 from pathlib import Path
 
+import tomlkit
+
 logger = logging.getLogger(__name__)
+
 
 def setup_environment():
     # Define base directories
@@ -50,7 +52,7 @@ def load_state() -> dict:
     state_file = get_state_file_path()
     if not state_file.exists():
         return {"last_lab_launched": None, "timestamp": None}
-    
+
     try:
         with open(state_file, "r") as f:
             return json.load(f)
@@ -64,7 +66,7 @@ def save_state(lab_name: str):
     state_file = get_state_file_path()
     state_data = {
         "last_lab_launched": lab_name,
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     try:
         with open(state_file, "w") as f:
@@ -184,5 +186,6 @@ menu_title = colorme(
 | |_| | |__| (_| | |_) \__ \
  \___/|_____\__,_|_.__/|___/
 
-""", "red"
+""",
+    "red",
 )

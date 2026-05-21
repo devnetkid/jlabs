@@ -2,6 +2,7 @@
 
 from jlabs import cli
 
+
 def main():
     cli.run()
 

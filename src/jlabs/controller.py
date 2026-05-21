@@ -3,12 +3,21 @@
 import logging
 import sys
 
-from jlabs import menu, utils
+from jlabs import menu, tools, utils
 
 logger = logging.getLogger(__name__)
 
+
 def load_lab():
     pass
+
+
+def create_toml():
+    """Create a lab.toml file from a lab in eve-ng."""
+    lab_name = input("Enter the name of the existing eve-ng lab: ").strip()
+    logger.info(f"User requested to build lab.toml from eve-ng lab {lab_name}")
+    tools.create_toml(lab_name)
+    input("Press [ENTER] to continue...")
 
 
 def jlabs_exit():
@@ -18,7 +27,7 @@ def jlabs_exit():
     sys.exit(0)
 
 
-def labs_menu_view():
+def labs_menu():
     """Displays the available lab exercises"""
     menu_title = utils.menu_title
     menu_subtitle = "Labs Menu"
@@ -35,7 +44,7 @@ def labs_menu_view():
         labs_menu.get_input()
 
 
-def eveng_tools():
+def tools_menu():
     """Displays a sub-menu for lab options"""
     menu_title = utils.menu_title
     menu_subtitle = "Tools"
@@ -44,6 +53,7 @@ def eveng_tools():
         menu_subtitle,
         [
             ("Return to the main menu", main_menu),
+            ("Create lab file from existing lab", create_toml),
             ("Exit", jlabs_exit),
         ],
     )
@@ -59,8 +69,8 @@ def main_menu():
         menu_title,
         menu_subtitle,
         [
-            ("Labs", labs_menu_view),
-            ("Tools", eveng_tools),
+            ("Labs", labs_menu),
+            ("Tools", tools_menu),
             ("Exit", jlabs_exit),
         ],
     )
