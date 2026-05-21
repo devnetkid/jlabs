@@ -52,8 +52,8 @@ def tools_menu():
         menu_title,
         menu_subtitle,
         [
+            ("Create a lab file from an existing lab", create_toml),
             ("Return to the main menu", main_menu),
-            ("Create lab file from existing lab", create_toml),
             ("Exit", jlabs_exit),
         ],
     )
