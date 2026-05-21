@@ -6,7 +6,7 @@ import requests
 
 
 class EveNgClient:
-    def __init__(self, host="192.168.11.99"):
+    def __init__(self, host):
         self.base_url = f"http://{host}/api"
         self.session = requests.Session()
 

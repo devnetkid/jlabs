@@ -1,12 +1,19 @@
 # src/jlabs/tools.py
 
 import logging
+import os
+import sys
 
 from jlabs import eveng, utils
 
 logger = logging.getLogger(__name__)
 
-client = eveng.EveNgClient()
+EVENG_IP = os.getenv("EVENG_IP", None)
+if EVENG_IP == None:
+    print("You must define your Eve-NG IP address in an environment variable EVENG_IP.")
+    sys.exit(0)
+    
+client = eveng.EveNgClient(EVENG_IP)
 
 
 def define_lab_details(lab_data: dict) -> dict:
