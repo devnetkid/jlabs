@@ -1,0 +1,20 @@
+# virtual environments
+.venv
+.env
+
+# logs
+*.logs
+logs/
+
+# input and output
+input/
+output/
+
+# python things
+*.egg-info/
+__pycache__/
+*.#!/usr/bin/env python[cod]
+
+# mac os stuff
+.DS_Store
+*.swp

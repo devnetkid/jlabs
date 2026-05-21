@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jlabs"
+version = "0.0.1"
+dynamic = ["dependencies"]
+
+[project.scripts]
+jlabs = "jlabs.__main__:main"
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.flake8]
+max-line-length = 99
