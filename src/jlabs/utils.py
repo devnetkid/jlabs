@@ -30,13 +30,15 @@ def setup_environment():
     if not isinstance(log_level, int):
         raise ValueError("Invalid log level")
 
+    log_format = "%(asctime)s%(filename)20s:%(lineno)-6d%(levelname)s > %(message)s"
+
     # Configure logging
     logging.basicConfig(
         filename=logs_dir / log_file,
         filemode="w",
         encoding="utf-8",
         level=log_level,
-        format="%(asctime)s %(filename)20s:%(lineno)s %(levelname)11s > %(message)s",
+        format=log_format,
         datefmt="%m/%d/%Y %I:%M:%S %p",
     )
 

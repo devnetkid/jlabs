@@ -111,8 +111,6 @@ def delete_lab(lab_name: str):
     finally:
         client.logout()
         
-    input("Press [ENTER] to continue...")
-
 
 def find_node_id_by_name(nodes: dict, src_node: str, dst_node: str) -> tuple[str, str]:
     src_node_id = dst_node_id = ""
@@ -135,6 +133,7 @@ def create_lab(lab_data):
     """Creates a new lab in eve-ng based on the contents of a toml config file."""
     lab_name = lab_data["name"] + ".unl"
     logger.info(f"Attempting to create lab {lab_name}")
+    print(f"Creating the lab {lab_name}")
     try:
         client.login()
         client.post("labs", lab_data)
@@ -143,11 +142,13 @@ def create_lab(lab_data):
     finally:
         client.logout()
         logger.info("Successfully created a new lab.")
+        print(f"Successfully created lab {lab_name}")
 
 
 def add_nodes(lab_name, lab_nodes):
     """Adding nodes to the Eve-NG lab as noted in the toml config file"""
     logger.info(f"Adding nodes to the lab {lab_name}")
+    print(f"Adding the nodes to lab {lab_name}")
     try:
         for node in lab_nodes:
             client.login()
@@ -157,19 +158,20 @@ def add_nodes(lab_name, lab_nodes):
     finally:
         client.logout()
         logger.info("Successfully added nodes to the new lab.")
+        print(f"Successfully added nodes for lab {lab_name}")
 
 
 def connect_cables(lab_name, lab_cables):
     """Connecting the requested cables per lab.toml file"""
     logger.info(f"Connecting requested cables for the lab {lab_name}")
-    logger.info(f"cables for the lab {lab_cables}")
+    logger.debug(f"cables for the lab {lab_cables}")
+    print(f"Connecting cables for lab {lab_name}")
     
     try:
         client.login()
         # Get the ID assigned to each node so we know where to attach cable
         nodes = client.get(f"labs/{lab_name}/nodes")["data"]
-        logger.info("The following is the node data pulled from the lab:")
-        logger.info(nodes)
+        logger.debug(f"Nodes data: {nodes}")
         for cable in lab_cables:
             src_node, dst_node = cable.get("source"), cable.get("destination")
             src_label, dst_label = cable.get("source_label"), cable.get(
@@ -177,8 +179,6 @@ def connect_cables(lab_name, lab_cables):
             )
 
             src_node_id, dst_node_id = find_node_id_by_name(nodes, src_node, dst_node)
-            logger.info(f"src_node_id is {src_node_id}")
-            logger.info(f"dst_node_id is {dst_node_id}")
 
             src_node_ports = client.get(
                 f"labs/{lab_name}/nodes/{src_node_id}/interfaces"
@@ -303,12 +303,15 @@ def check_if_lab_exists(lab_name):
         if response and response.get("code") == 200:
             logger.warning(f"The lab {lab_name} already exists.")
             print(f"The lab {lab_name} already exists.")
-            
+            logger.info(f"Prompting to delete the lab or not")
             choice = input("Would you like to continue? If so the current lab will be deleted. [y/n]: ")
             if choice.lower() != "y":
+                logger.info(f"The request was made to not delete the lab {lab_name}")
+                logger.info(f"Exiting jlabs")
                 client.logout()
                 sys.exit(0)
             else:
+                logger.info(f"The request was made to delete the lab")
                 logger.info(f"Deleting lab {lab_name}...")
                 delete_lab(lab_name)
         else:
@@ -330,24 +333,50 @@ def check_if_lab_exists(lab_name):
         client.logout()
 
 
-def load_lab(lab: str):
-    logger.info(f"Loading lab.toml file from {lab}")
+def _setup_lab(lab: str, is_restart: bool = False):
+    """
+    Core logic for loading or restarting a lab.
+    """
+    action_verb = "Restarting" if is_restart else "Loading"
+    logger.info(f"{action_verb} lab.toml file from {lab}")
+    
     filename = f"{lab}/lab.toml"
 
     try:
         lab_settings = utils.load_toml(str(filename))
         lab_name = lab_settings["lab"]["name"]
+        
         if not lab_name.endswith(".unl"):
             lab_name = f"{lab_name}.unl"
+            
         lab_data = lab_settings.get("lab", [])
         lab_nodes = lab_settings.get("nodes", [])
         lab_cables = lab_settings.get("cables", [])
-        check_if_lab_exists(lab_name)
+        
+        # If the request is to restart don't check for lab existance
+        if is_restart:
+            delete_lab(lab_name)
+        else:
+            check_if_lab_exists(lab_name)
+            
         create_lab(lab_data)
         add_nodes(lab_name, lab_nodes)
         connect_cables(lab_name, lab_cables)
         start_nodes(lab_name, lab_nodes)
         load_base_configs(lab, lab_name, lab_nodes)
-        utils.save_state(lab)
+        
+        # save_state only for loading a new lab 
+        if not is_restart:
+            utils.save_state(lab)
+            
     except Exception as e:
-        print(f"Failed to load lab {lab}: {e}")
+        action_lower = "restart" if is_restart else "load"
+        print(f"Failed to {action_lower} lab {lab}: {e}")
+
+
+def load_lab(lab: str):
+    _setup_lab(lab, is_restart=False)
+
+
+def restart_lab(lab: str):
+    _setup_lab(lab, is_restart=True)
