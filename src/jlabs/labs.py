@@ -9,9 +9,9 @@ from jlabs import connect, eveng, utils
 
 logger = logging.getLogger(__name__)
 
-EVENG_IP = os.getenv("EVENG_IP", None)
+EVENG_IP = os.getenv("JLABS_EVENG_IP", None)
 if EVENG_IP == None:
-    print("You must define your Eve-NG IP address in an environment variable EVENG_IP.")
+    print("You must define your Eve-NG IP address in an environment variable JLABS_EVENG_IP.")
     sys.exit(0)
     
 client = eveng.EveNgClient(EVENG_IP)

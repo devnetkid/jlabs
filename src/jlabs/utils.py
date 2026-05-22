@@ -26,7 +26,7 @@ def setup_environment():
     log_file = "jlabs.log"
 
     # Check environment variables for log level, defaults to info if none provided
-    log_level = getattr(logging, os.getenv("LABS_LOG_LEVEL", "info").upper(), None)
+    log_level = getattr(logging, os.getenv("JLABS_LOG_LEVEL", "info").upper(), None)
     if not isinstance(log_level, int):
         raise ValueError("Invalid log level")
 
