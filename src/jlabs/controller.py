@@ -3,13 +3,32 @@
 import logging
 import sys
 
-from jlabs import menu, tools, utils
+from jlabs import labs, menu, tools, utils
 
 logger = logging.getLogger(__name__)
 
 
 def load_lab():
-    pass
+    """List the available labs"""
+    labs_list = utils.list_dir()
+    if not labs_list:
+        print("No labs found.")
+        input("Press [ENTER] to continue...")
+        return
+
+    for index, lab in enumerate(labs_list, start=1):
+        print(f"{index} - {lab}")
+        
+    response = input("\nEnter the number next to the lab you would like to run: ")
+    try:
+        choice_idx = int(response) - 1
+        if choice_idx < 0 or choice_idx >= len(labs_list):
+            raise IndexError
+        labs.load_lab(labs_list[choice_idx])
+    except (ValueError, IndexError):
+        print("Invalid selection. Please enter a valid number from the list.")
+
+    input("Press [ENTER] to continue...")
 
 
 def create_toml():

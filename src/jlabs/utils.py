@@ -40,6 +40,9 @@ def setup_environment():
         datefmt="%m/%d/%Y %I:%M:%S %p",
     )
 
+    # We only want to see warning and above from the requests library
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 
 def get_state_file_path() -> Path:
     base_dir = Path.home() / "jlabs"
