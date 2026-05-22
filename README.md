@@ -106,5 +106,5 @@ Once you make a choice on this menu it will attempt to create your lab according
 > Once you are done with said lab, you will want to shut it down. This properly stops running nodes, closes and deletes the lab from Eve-NG, as well as removing a state file.
 
 > [!note]
-> If you want to start over or are using the same topology for another lab, just selecte **Restart lab with base configs**
+> If you want to start over or are using the same topology for another lab, you can just select **Restart lab with base configs**
 
