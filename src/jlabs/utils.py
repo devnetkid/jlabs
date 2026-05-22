@@ -45,6 +45,13 @@ def setup_environment():
     # We only want to see warning and above from the requests library
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+    # Suppress Netmiko-specific logs
+    logging.getLogger("netmiko").setLevel(logging.WARNING)
+    
+    # Suppress Paramiko logs (Netmiko uses Paramiko for SSH)
+    logging.getLogger("paramiko").setLevel(logging.WARNING)
+
+
 
 def get_state_file_path() -> Path:
     base_dir = Path.home() / "jlabs"
