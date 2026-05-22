@@ -30,7 +30,7 @@ def setup_environment():
     if not isinstance(log_level, int):
         raise ValueError("Invalid log level")
 
-    log_format = "%(asctime)s%(filename)20s:%(lineno)-6d%(levelname)s > %(message)s"
+    log_format = "%(asctime)s%(filename)20s:%(lineno)-10d%(levelname)10s > %(message)-1s"
 
     # Configure logging
     logging.basicConfig(
@@ -79,6 +79,23 @@ def save_state(lab_name: str):
         logger.info(f"State updated: last lab launched is '{lab_name}'")
     except Exception as e:
         logger.error(f"Failed to save state file: {e}")
+
+
+def remove_state_file() -> bool:
+    """Removes the hidden state file if it exists.
+    
+    Returns:
+        True if the file was successfully removed, False otherwise.
+    """
+    state_file = get_state_file_path()
+    try:
+        # missing_ok=True prevents FileNotFoundError if it's already gone
+        state_file.unlink(missing_ok=True)
+        return True
+    except Exception as e:
+        # Handle permission errors or other OS-level issues
+        print(f"Error removing state file: {e}")
+        return False
 
 
 def write_toml(filename, content):

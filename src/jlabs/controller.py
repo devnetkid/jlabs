@@ -8,6 +8,30 @@ from jlabs import labs, menu, tools, utils
 logger = logging.getLogger(__name__)
 
 
+def shutdown_lab():
+    """Shuts down a lab and removes it from Eve-NG"""
+    logger.info("Request made to shutdown lab")
+    logger.info("Ensure we have a state file before shutting down the lab")
+    
+    state = utils.load_state()
+    
+    # Safely check if state is None/empty, or if the key is missing
+    if not state or not state.get("last_lab_launched"):
+        logger.info("No state file found. Returning to the Labs Menu")
+        print("Current running lab not found, load a lab first.")
+        input("Press [ENTER] to continue...")
+        return  # Stop the function here so it doesn't crash below
+
+    # If we pass the check, we know 'state' is a dict and the lab exists
+    lab_name = state["last_lab_launched"]
+
+    # Restart lab
+    logger.info(f"Shutting down the lab in folder {lab_name}")
+    labs.shutdown_lab(lab_name)
+
+    input("Press [ENTER] to continue...")
+
+
 def restart_lab():
     """Restarts a lab with its base configs"""
     logger.info("Request made to restart lab")
@@ -83,6 +107,7 @@ def labs_menu():
         [
             ("Load a lab", load_lab),
             ("Restart lab with base configs", restart_lab),
+            ("Shutdown the current lab", shutdown_lab),
             ("Return to the main menu", main_menu),
             ("Exit", jlabs_exit),
         ],

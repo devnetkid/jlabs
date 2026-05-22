@@ -76,12 +76,13 @@ def stop_nodes(lab_name: str):
             # In EVE-NG, status 2 means running, 0 means stopped
             if node_data.get('status') == 2:
                 node_name = node_data.get('name', f"Node_{node_id}")
+                logger.info(f"Stopping node {node_name}")
                 print(f"Stopping node {node_name}...")
                 client.get(f"labs/{lab_name}/nodes/{node_id}/stop")
                 time.sleep(1)  # Brief pause to avoid overwhelming the server API
                 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error communicating with EVE-NG while stopping nodes: {e}")
+    except Exception as err:
+        logger.error(f"Error communicating with EVE-NG while stopping nodes: {err}")
         print(f"Warning: Could not verify or stop nodes due to a network error.")
     finally:
         client.logout()
@@ -98,7 +99,7 @@ def delete_lab(lab_name: str):
     try:
         client.login()
         response = client.delete(url)
-        logger.debug(f"Deleted lab {lab_name}, response from server was {response}")
+        logger.info(f"Successfully deleted lab {lab_name}")
         
         # Check if the API actually returned a success code (usually 200 or 201)
         if response in [200, 201, 204]:
@@ -106,7 +107,8 @@ def delete_lab(lab_name: str):
         else:
             print(f"Server responded, but lab may not have deleted: {response.get('message', 'Unknown error')}")
             
-    except requests.exceptions.RequestException as err:
+    except Exception as err:
+        logger.info(f"Failed to delete lab {lab_name}")
         print(f"Failed to delete lab: \n{err}")
     finally:
         client.logout()
@@ -230,8 +232,8 @@ def start_nodes(lab: str, nodes: list):
         try:
             client.login()
             client.get(endpoint)
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error starting node {node_name}: {e}")
+        except Exception as err:
+            logger.error(f"Error starting node {node_name}: {err}")
         finally:
             client.logout()
         time.sleep(3)
@@ -246,7 +248,7 @@ def load_base_configs(lab: str, lab_name: str, nodes: list):
         node_name = node["name"]
         logger.info(f"Current node {node_name}")
         node_info = get_node_status(lab_name, node)
-        logger.info(f"Node status for node {node_name}: {node_info}")
+        logger.debug(f"Node status for node {node_name}: {node_info}")
 
         # If type is other, like vpcs, then go to next iteration
         if node_info["type"] != "qemu":
@@ -331,6 +333,26 @@ def check_if_lab_exists(lab_name):
     finally:
         # Ensure logout always happens, even if an unexpected exception occurs
         client.logout()
+
+
+
+def shutdown_lab(lab: str):
+    """
+    Core logic for shutting down a lab.
+    """
+    
+    filename = f"{lab}/lab.toml"
+
+    lab_settings = utils.load_toml(str(filename))
+    lab_name = lab_settings["lab"]["name"]
+    
+    if not lab_name.endswith(".unl"):
+        lab_name = f"{lab_name}.unl"
+        
+    logger.info(f"Shutting down lab {lab_name}")
+    delete_lab(lab_name)
+    logger.info(f"Removing state file {lab}")
+    utils.remove_state_file()
 
 
 def _setup_lab(lab: str, is_restart: bool = False):
