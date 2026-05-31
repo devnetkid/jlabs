@@ -9,12 +9,7 @@ from jlabs import connect, eveng, utils
 
 logger = logging.getLogger(__name__)
 
-EVENG_IP = os.getenv("JLABS_EVENG_IP", None)
-if EVENG_IP == None:
-    print("You must define your Eve-NG IP address in an environment variable JLABS_EVENG_IP.")
-    sys.exit(0)
-    
-client = eveng.EveNgClient(EVENG_IP)
+client = eveng.EveNgClient()
 
 def find_node_id_by_name(nodes: dict, src_node: str, dst_node: str) -> tuple[str, str]:
     src_node_id = dst_node_id = ""
@@ -171,44 +166,93 @@ def connect_cables(lab_name, lab_cables):
     
     try:
         client.login()
-        # Get the ID assigned to each node so we know where to attach cable
+        
+        # 1. Fetch BOTH nodes and networks from the lab
         nodes = client.get(f"labs/{lab_name}/nodes")["data"]
+        networks = client.get(f"labs/{lab_name}/networks")["data"]
+        
         logger.debug(f"Nodes data: {nodes}")
+        logger.debug(f"Networks data: {networks}")
+
+        # Inline helper to safely find IDs by name from dict or list data types
+        def find_id_by_name(data_store, name):
+            if isinstance(data_store, dict):
+                for item_id, item_info in data_store.items():
+                    if item_info.get("name") == name:
+                        return item_id
+            elif isinstance(data_store, list):
+                for item in data_store:
+                    if item.get("name") == name:
+                        return item.get("id")
+            return None
+
         for cable in lab_cables:
-            src_node, dst_node = cable.get("source"), cable.get("destination")
-            src_label, dst_label = cable.get("source_label"), cable.get(
-                "destination_label"
-            )
+            src_node = cable.get("source")
+            dst_node = cable.get("destination")
+            src_label = cable.get("source_label")
+            dst_label = cable.get("destination_label")
+            dst_type = str(cable.get("destination_type", "")).lower()
 
-            src_node_id, dst_node_id = find_node_id_by_name(nodes, src_node, dst_node)
+            # 2. Get the Source Node ID (Cables always originate from a node)
+            src_node_id = find_id_by_name(nodes, src_node)
+            if not src_node_id:
+                logger.error(f"Source node '{src_node}' not found. Skipping cable.")
+                continue
 
+            # Fetch source node ports
             src_node_ports = client.get(
                 f"labs/{lab_name}/nodes/{src_node_id}/interfaces"
             )["data"]["ethernet"]
-            dst_node_ports = client.get(
-                f"labs/{lab_name}/nodes/{dst_node_id}/interfaces"
-            )["data"]["ethernet"]
-
-            bid_data = {
-                "name": "Net-1",
-                "type": "bridge",
-                "left": 940,
-                "top": 196,
-                "visibility": 1,
-            }
-            bid_result = client.post(f"labs/{lab_name}/networks", bid_data)
-            bid = bid_result["data"].get("id")
-
             src_idx = get_interface_index(src_node_ports, src_label)
-            dst_idx = get_interface_index(dst_node_ports, dst_label)
 
-            client.put(
-                f"labs/{lab_name}/nodes/{src_node_id}/interfaces", {src_idx: bid}
-            )
-            client.put(
-                f"labs/{lab_name}/nodes/{dst_node_id}/interfaces", {dst_idx: bid}
-            )
-            client.put(f"labs/{lab_name}/networks/{bid}", {"visibility": 0})
+            # 3. Determine if the destination is an existing network
+            dst_network_id = find_id_by_name(networks, dst_node)
+            is_network_dst = (dst_type == "network") or (dst_network_id is not None)
+
+            if is_network_dst:
+                # --- NODE-TO-NETWORK CONNECTION ---
+                if not dst_network_id:
+                    logger.error(f"Destination network '{dst_node}' not found. Skipping.")
+                    continue
+                
+                # Connect source node interface directly to the existing network ID
+                client.put(
+                    f"labs/{lab_name}/nodes/{src_node_id}/interfaces", {src_idx: dst_network_id}
+                )
+                logger.info(f"Connected node '{src_node}' directly to network '{dst_node}'")
+
+            else:
+                # --- NODE-TO-NODE CONNECTION ---
+                dst_node_id = find_id_by_name(nodes, dst_node)
+                if not dst_node_id:
+                    logger.error(f"Destination node '{dst_node}' not found. Skipping.")
+                    continue
+
+                dst_node_ports = client.get(
+                    f"labs/{lab_name}/nodes/{dst_node_id}/interfaces"
+                )["data"]["ethernet"]
+                dst_idx = get_interface_index(dst_node_ports, dst_label)
+
+                # Create a new transit bridge network for this link
+                bid_data = {
+                    "name": f"Net-{src_node_id}-{dst_node_id}",
+                    "type": "bridge",
+                    "left": 940,
+                    "top": 196,
+                    "visibility": 1,
+                }
+                bid_result = client.post(f"labs/{lab_name}/networks", bid_data)
+                bid = bid_result["data"].get("id")
+
+                # Connect both nodes to the transit bridge, then hide it
+                client.put(
+                    f"labs/{lab_name}/nodes/{src_node_id}/interfaces", {src_idx: bid}
+                )
+                client.put(
+                    f"labs/{lab_name}/nodes/{dst_node_id}/interfaces", {dst_idx: bid}
+                )
+                client.put(f"labs/{lab_name}/networks/{bid}", {"visibility": 0})
+                logger.info(f"Connected node '{src_node}' to node '{dst_node}' via bridge {bid}")
 
         logger.info("The cables for the lab have been connected.")
         print(f"Successfully connected the cables for lab {lab_name}")
