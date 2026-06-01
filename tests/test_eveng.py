@@ -61,19 +61,15 @@ def test_login_success(mock_request, monkeypatch):
 
     # 4. Assertions
     # Note: Because we patched Session.request, requests translates .post() into a "POST" argument
-    mock_request.assert_called_once_with(
-        "POST",
-        "http://10.0.0.1/api/auth/login",
-        json={"username": "test_user", "password": "test_pass", "html5": "-1"}
-    )
     
     expected_entries = [
-        call("POST", "http://10.0.0.1/api/auth/login", json={"username": "test_user", "password": "test_pass", "html5": "-1"}),
+        call("POST", "http://10.0.0.1/api/auth/login", data=None, json={"username": "test_user", "password": "test_pass", "html5": "-1"}),
         call("GET", "http://10.0.0.1/api/auth", allow_redirects=True)
     ]
 
     mock_request.assert_has_calls(expected_entries, any_order=True)
     # Verify that your method successfully returned the mock data
+    assert mock_request.call_count == 2
     assert result == {"status": "success", "message": "Authenticated."}
 
 def test_login_failure_raises_error(monkeypatch):
