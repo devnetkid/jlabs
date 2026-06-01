@@ -58,9 +58,16 @@ def create_toml(lab_name):
 
     try:
         client.login()
-        lab_data = client.get(f"labs/{lab_name}.unl").get("data")
-        lab_nodes = client.get(f"labs/{lab_name}.unl/nodes").get("data", {})
-        lab_cables = client.get(f"labs/{lab_name}.unl/topology").get("data", [])
+       
+        # Refactored to use the dynamic get_lab_endpoint method
+        lab_endpoint = client.get_lab_endpoint(lab_name)
+        nodes_endpoint = client.get_lab_endpoint(lab_name, "nodes")
+        topology_endpoint = client.get_lab_endpoint(lab_name, "topology")
+
+        lab_data = client.get(lab_endpoint).get("data")
+        lab_nodes = client.get(nodes_endpoint).get("data", {})
+        lab_cables = client.get(topology_endpoint).get("data", [])
+       
     except Exception as err:
         print(f"A network error occurred communicating with EVE-NG: \n{err}")
         return
