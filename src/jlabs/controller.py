@@ -65,10 +65,20 @@ def load_lab():
         input("Press [ENTER] to continue...")
         return
 
+    # Display the available labs
     for index, lab in enumerate(labs_list, start=1):
         print(f"{index} - {lab}")
         
-    response = input("\nEnter the number next to the lab you would like to run: ")
+    # Display the quit option
+    print("q - Quit and return to previous menu")
+        
+    response = input("\nEnter the number next to the lab you would like to run (or 'q' to quit): ")
+    
+    # Check for the quit command before attempting to parse as an integer
+    if response.strip().lower() in ['q', 'quit']:
+        return
+        
+    # Validate choice
     try:
         choice_idx = int(response) - 1
         if choice_idx < 0 or choice_idx >= len(labs_list):
@@ -76,6 +86,30 @@ def load_lab():
         labs.load_lab(labs_list[choice_idx])
     except (ValueError, IndexError):
         print("Invalid selection. Please enter a valid number from the list.")
+
+    input("Press [ENTER] to continue...")
+
+
+def tshoot_lab():
+    """Injects a random issue from the current labs issues.toml file"""
+    logger.info("Request made to troubleshoot random issue lab")
+    logger.info("Making sure we have a state file before injecting issue")
+    
+    state = utils.load_state()
+    
+    # Safely check if state is None/empty, or if the key is missing
+    if not state or not state.get("last_lab_launched"):
+        logger.info("No state file found. Returning to the Labs Menu")
+        print("Current running lab not found, load a lab first.")
+        input("Press [ENTER] to continue...")
+        return  # Stop the function here so it doesn't crash below
+
+    # If we pass the check, we know 'state' is a dict and the lab exists
+    lab_name = state["last_lab_launched"]
+
+    # Restart lab
+    logger.info(f"Injecting ramdom issue to lab {lab_name}")
+    labs.inject_issue(lab_name)
 
     input("Press [ENTER] to continue...")
 
@@ -107,6 +141,7 @@ def labs_menu():
         [
             ("Load a lab", load_lab),
             ("Restart lab with base configs", restart_lab),
+            ("Inject a random issue to troubleshoot", tshoot_lab),
             ("Shutdown the current lab", shutdown_lab),
             ("Return to the main menu", main_menu),
             ("Exit", jlabs_exit),

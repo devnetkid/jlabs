@@ -104,6 +104,21 @@ def remove_state_file() -> bool:
         return False
 
 
+def writelines_to_file(file_name, text):
+    logger.debug('The "writelines_to_file" function called')
+    # Find users home directory and join with settings location
+    full_path = Path.home() / "jlabs/" / file_name
+    logger.debug(f"The path for writelines_to_file is {full_path}")
+
+    # Write text to given path
+    try:
+        with open(full_path, "w") as file_data:
+            file_data.writelines(text)
+    except FileNotFoundError:
+        logger.error(f"Could not open {full_path}")
+        sys.exit()
+
+
 def write_toml(filename, content):
     """
     Saves toml data to a file, prompting to overwrite if the file already exists.

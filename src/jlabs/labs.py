@@ -2,6 +2,7 @@
 
 import logging
 import os
+import random
 import sys
 import time
 
@@ -10,6 +11,93 @@ from jlabs import connect, eveng, utils
 logger = logging.getLogger(__name__)
 
 client = eveng.EveNgClient()
+
+def get_lab_settings(lab_folder: str, file_name: str = "lab.toml") -> dict:
+    """Loads a TOML file and enforces the .unl extension on the lab name."""
+    settings = utils.load_toml(f"{lab_folder}/{file_name}")
+    
+    # Enforce .unl suffix if the lab key exists
+    if "lab" in settings and "name" in settings["lab"]:
+        lab_name = settings["lab"]["name"]
+        if not lab_name.endswith(".unl"):
+            settings["lab"]["name"] = f"{lab_name}.unl"
+            
+    return settings
+
+
+def inject_issue(lab_folder: str):
+    """Injects a random issue for troubleshooting from the issues.toml file"""
+    print("Injecting a random issue to troubleshoot")
+    
+    # Load and parse the TOML file
+    lab_issues = utils.load_toml(f"{lab_folder}/issues.toml")
+    
+    # Extract the list using your top-level key
+    issues_list = lab_issues["faults"]
+    
+    # Randomly select one
+    selected_issue = random.choice(issues_list)
+    
+    # Get the lab name from the lab settings
+    lab_settings = get_lab_settings(lab_folder)
+    lab_name = lab_settings["lab"]["name"]
+
+    # Create an answer key in case user get's lost or wants to verify
+    answer_key = ["=== Random Issue Answer Key ===\n"]
+    answer_key.append(f"Lab Name:        {lab_name}\n")
+    answer_key.append(f"Target Device:   {selected_issue["device"]}\n")
+    answer_key.append(f"Fault Type:      {selected_issue["scenario"]}\n")
+    answer_key.append(f"Commands:        {selected_issue["commands"]}\n")
+    utils.writelines_to_file("random_issue_answer_key.txt", answer_key)
+
+    # Get the selected devices node id
+    try:
+        client.login()
+        # Fetch all nodes in the lab dynamically
+        nodes_endpoint = client.get_lab_endpoint(lab_name, "nodes")
+        nodes_response = client.get(nodes_endpoint)
+        nodes = nodes_response.get("data", {})
+
+        # Iterate through the dictionary of nodes
+        for node_id, node_data in nodes.items():
+            if node_data.get('name') == selected_issue["device"]:
+                url = node_data.get('url')
+                logger.info(f"node {node_data["name"]} was selected for the issue")
+             
+    except Exception as err:
+        logger.error(f"Error communicating with EVE-NG while stopping nodes: {err}")
+        print(f"Warning: Could not verify or stop nodes due to a network error.")
+    finally:
+        client.logout()
+
+    telnet_ip = telnet_port = eve_ip = None
+
+    if ":" in url:
+        telnet_ip = url.split(":")[-2]
+        telnet_port = url.split(":")[-1]
+
+    if telnet_ip and "//" in telnet_ip:
+        eve_ip = telnet_ip.lstrip("//")
+    
+    device_settings = {
+        "device_ip": eve_ip,
+        "device_type": "cisco_ios_telnet",
+        "port": telnet_port,
+        "username": "admin",
+        "password": "cisco",
+    }
+   
+    device = connect.DeviceConnection(**device_settings)
+   
+    try:
+        device.connect()
+        device.write_config(selected_issue["commands"])
+        device.disconnect()
+    except Exception as e:
+        logger.debug(f"Unable to SSH/Telnet: {e}")
+    
+    print(selected_issue["scenario"])
+    
 
 def find_node_id_by_name(nodes: dict, src_node: str, dst_node: str) -> tuple[str, str]:
     src_node_id = dst_node_id = ""
@@ -121,23 +209,28 @@ def get_interface_index(ports: list, label: str) -> str:
 
 def create_lab(lab_data):
     """Creates a new lab in eve-ng based on the contents of a toml config file."""
-    lab_name = lab_data["name"] + ".unl"
-    logger.info(f"Attempting to create lab {lab_name}")
-    print(f"Creating the lab {lab_name}")
+    
+    # The get settings function modified the lab name to ensure it contained the .unl
+    # This made it less repititious for most functions but breaks this one.
+    # Strip the .unl from the lab name for this function.
+    lab_data["name"] = lab_data.get("name").rstrip(".unl")
+    logger.info(f"Attempting to create lab {lab_data.get("name")}")
+    print(f"Creating the lab {lab_data.get("name")}")
     try:
         client.login()
         # Creating a lab always POSTs to the base 'labs' endpoint with lab path payload
         client.post("labs", lab_data)
+        print(f"Successfully created lab {lab_data.get("name")}")
+        logger.info("Successfully created a new lab.")
     except Exception as err:
         print(f"An error occurred creating the lab: \n{err}")
+        sys.exit(1)
     finally:
         client.logout()
-        logger.info("Successfully created a new lab.")
-        print(f"Successfully created lab {lab_name}")
 
 
 def add_nodes(lab_name, lab_nodes):
-    """Adding nodes to the Eve-NG lab as noted in the toml config file"""
+    """Adding nodes to the Eve-NG lab as described in the toml config file"""
     logger.info(f"Adding nodes to the lab {lab_name}")
     print(f"Adding the nodes to lab {lab_name}")
     try:
@@ -145,12 +238,12 @@ def add_nodes(lab_name, lab_nodes):
             client.login()
             nodes_endpoint = client.get_lab_endpoint(lab_name, "nodes")
             client.post(nodes_endpoint, node)
+        logger.info("Successfully added nodes to the new lab.")
+        print(f"Successfully added nodes for lab {lab_name}")
     except Exception as err:
         print(f"An error occurred creating the lab: \n{err}")
     finally:
         client.logout()
-        logger.info("Successfully added nodes to the new lab.")
-        print(f"Successfully added nodes for lab {lab_name}")
 
 
 def connect_cables(lab_name, lab_cables):
@@ -210,7 +303,7 @@ def connect_cables(lab_name, lab_cables):
                 # --- NODE-TO-NETWORK CONNECTION ---
                 if not dst_network_id:
                     logger.error(f"Destination network '{dst_node}' not found. Skipping.")
-                    continue
+                    sys.exit(1)
                
                 # Connect source node interface directly to the existing network ID
                 client.put(src_interfaces_endpoint, {src_idx: dst_network_id})
@@ -221,7 +314,7 @@ def connect_cables(lab_name, lab_cables):
                 dst_node_id = find_id_by_name(nodes, dst_node)
                 if not dst_node_id:
                     logger.error(f"Destination node '{dst_node}' not found. Skipping.")
-                    continue
+                    sys.exit(1)
 
                 dst_interfaces_endpoint = client.get_lab_endpoint(lab_name, f"nodes/{dst_node_id}/interfaces")
                 dst_node_ports = client.get(dst_interfaces_endpoint)["data"]["ethernet"]
@@ -391,27 +484,21 @@ def shutdown_lab(lab: str):
     utils.remove_state_file()
 
 
-def _setup_lab(lab: str, is_restart: bool = False):
+def _setup_lab(lab_folder: str, is_restart: bool = False):
     """
     Core logic for loading or restarting a lab.
     """
     action_verb = "Restarting" if is_restart else "Loading"
-    logger.info(f"{action_verb} lab.toml file from {lab}")
+    logger.info(f"{action_verb} lab.toml file from {lab_folder}")
    
-    filename = f"{lab}/lab.toml"
-
     try:
-        lab_settings = utils.load_toml(str(filename))
-        lab_name = lab_settings["lab"]["name"]
-       
-        if not lab_name.endswith(".unl"):
-            lab_name = f"{lab_name}.unl"
-           
+        lab_settings = get_lab_settings(lab_folder)
         lab_data = lab_settings.get("lab", [])
         lab_nodes = lab_settings.get("nodes", [])
         lab_cables = lab_settings.get("cables", [])
+        lab_name = lab_data.get("name", "")
        
-        # If the request is to restart don't check for lab existance
+        # If the request is to restart, don't check for lab existance
         if is_restart:
             delete_lab(lab_name)
         else:
@@ -421,15 +508,15 @@ def _setup_lab(lab: str, is_restart: bool = False):
         add_nodes(lab_name, lab_nodes)
         connect_cables(lab_name, lab_cables)
         start_nodes(lab_name, lab_nodes)
-        load_base_configs(lab, lab_name, lab_nodes)
+        load_base_configs(lab_folder, lab_name, lab_nodes)
        
         # save_state only for loading a new lab
         if not is_restart:
-            utils.save_state(lab)
+            utils.save_state(lab_folder)
            
     except Exception as e:
         action_lower = "restart" if is_restart else "load"
-        print(f"Failed to {action_lower} lab {lab}: {e}")
+        print(f"Failed to {action_lower} lab {lab_folder}: {e}")
 
 
 def load_lab(lab: str):
