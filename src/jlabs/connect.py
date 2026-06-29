@@ -95,3 +95,39 @@ class DeviceConnection:
         except ReadTimeout:
             logger.info("A read timeout exception occurred")
             return ""
+
+
+    def send_interactive_command(self, command, expect_prompt, response):
+        """
+        Handles interactive prompts via low-level channel control to bypass Telnet buffering traps.
+        """
+        if self.device_type == "vpcs":
+            logger.info("Interactive commands not applicable for VPCS.")
+            return ""
+
+        try:
+            # 1. Clear the input buffer to flush any lingering carriage returns (\r or \n)
+            self.connection.clear_buffer()
+            
+            # 2. Write the exact command to the channel with a single clean newline
+            self.connection.write_channel(f"{command}\n")
+            
+            # 3. Read the raw stream until the question prompt shows up
+            output = self.connection.read_until_pattern(pattern=expect_prompt, read_timeout=5)
+            
+            # 4. Send the confirmation ('y') followed by a newline
+            self.connection.write_channel(f"{response}\n")
+            
+            # 5. Read until we are safely back at the standard router prompt (#)
+            output += self.connection.read_until_pattern(pattern=r"#", read_timeout=5)
+            
+            return output
+            
+        except Exception as e:
+            logger.error(f"Failed to execute interactive command '{command}': {e}")
+            # Safety fallback: keep the buffer clean for subsequent operations
+            try:
+                self.connection.clear_buffer()
+            except:
+                pass
+            return ""

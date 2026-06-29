@@ -92,6 +92,11 @@ def inject_issue(lab_folder: str):
     try:
         device.connect()
         device.write_config(selected_issue["commands"])
+        if selected_issue["interactive"]:
+            cmd = selected_issue["interactive"][0]
+            exp = selected_issue["interactive"][1]
+            ans = selected_issue["interactive"][2]
+            result = device.send_interactive_command(cmd, exp, ans)
         device.disconnect()
     except Exception as e:
         logger.debug(f"Unable to SSH/Telnet: {e}")
