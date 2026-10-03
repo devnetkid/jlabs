@@ -11,9 +11,13 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 class EveNgClient:
     def __init__(self):
         # Fetch environment variables on instantiation
-        eve_target = os.getenv("JLABS_EVENG_IP")
+        eve_target = os.getenv("JLABS_EVENG_SERVER")
         if not eve_target:
-            print("You must define your EVE-NG IP or URL in the environment variable JLABS_EVENG_IP.")
+            print("You must define your EVE-NG Server in the environment variable JLABS_EVENG_SERVER.")
+            sys.exit(1)
+
+        if not eve_target.startswith(("http://", "https://")):
+            print("The Eve-NG needs to be formatted with http:// or https:// depending on version")
             sys.exit(1)
 
         self.username = os.getenv("JLABS_EVENG_USER", "admin")
