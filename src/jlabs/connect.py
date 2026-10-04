@@ -27,6 +27,7 @@ class DeviceConnection:
         self.username = username
         self.password = password
         self.connection = None
+        self.current_prompt = None
 
     def connect(self):
         """
@@ -56,14 +57,22 @@ class DeviceConnection:
             "username": self.username,
             "password": self.password,
             "global_delay_factor": 2, 
+            "session_log": "netmiko.log"
         }
         
         try:
             self.connection = ConnectHandler(**device)
+            self.connection.enable()
+            self.current_prompt = self.connection.find_prompt()
+            print(f"Current prompt: {self.current_prompt}")
         except NetmikoTimeoutException as err:
             print(f"Unable to connect to {device['host']} on port {device['port']}")
-            print("Make sure device is reachable and running ssh/telnet")
-            raise err
+        except NetmikoAuthenticationException:
+            print("\nCONNECTION FAILED: Authentication error.")
+            print("Please verify your username, password, or privilege levels.")
+        except Exception as error:
+            print(f"\nCONNECTION FAILED: An unexpected error occurred:")
+            print(str(error))
 
     def disconnect(self):
         """Disconnects from a lab device"""

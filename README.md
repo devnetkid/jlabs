@@ -6,8 +6,8 @@
 
 ## Initial setup
 
-Your Eve-NG server IP address is required. Define an environment variable called JLABS_EVENG_IP.
-- Example: `export JLABS_EVENG_IP="192.168.1.1"`
+Your Eve-NG server IP address is required. Define an environment variable called JLABS_EVENG_SERVER.
+- Example: `export JLABS_EVENG_SERVER="https://192.168.1.1"`
 
 When you run the script for the first time it will create a folder in your home directory called jlabs. In this folder will be two more folders, one for labs and the other for logs.
 

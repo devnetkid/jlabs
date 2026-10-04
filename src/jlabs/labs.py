@@ -139,6 +139,7 @@ def get_node_status(lab: str, node: dict) -> dict:
         "name": node_data.get("name"),
         "type": node_data.get("type"),
         "status": status,
+        "template": node_data.get("template"),
         "port": telnet_port,
         "eve_ip": eve_ip,
     }
@@ -168,7 +169,7 @@ def stop_nodes(lab_name: str):
                 logger.info(f"Stopping node {node_name}")
                 print(f"Stopping node {node_name}...")
                
-                stop_endpoint = client.get_lab_endpoint(lab_name, f"nodes/{node_id}/stop")
+                stop_endpoint = client.get_lab_endpoint(lab_name, f"nodes/{node_id}/stop/stopmode=3")
                 client.get(stop_endpoint)
                 time.sleep(1)  # Brief pause to avoid overwhelming the server API
                
@@ -214,7 +215,6 @@ def get_interface_index(ports: list, label: str) -> str:
 
 def create_lab(lab_data):
     """Creates a new lab in eve-ng based on the contents of a toml config file."""
-    
     lab_data["name"] = lab_data.get("name").rstrip(".unl")
     logger.info(f"Attempting to create lab {lab_data.get("name")}")
     print(f"Creating the lab {lab_data.get("name")}")
@@ -352,6 +352,9 @@ def connect_cables(lab_name, lab_cables):
 
 def start_nodes(lab: str, nodes: list):
     """Starts each node listed in the lab_settings."""
+    logger.debug(f"Func: start_nodes, Var: lab {lab}")
+    logger.debug(f"Func: start_nodes, Var: nodes {nodes}")
+
     logger.info("Starting lab nodes")
     for node in nodes:
         node_name = node.get("name", "Unknown")
@@ -359,17 +362,35 @@ def start_nodes(lab: str, nodes: list):
         print(f"Starting node {node_name} ...")
 
         endpoint = client.get_lab_endpoint(lab, f"nodes/{node['id']}/start")
+        logger.debug(f"Func: start_nodes, Var: endpoint {endpoint}")
+        
         try:
             client.login()
             client.get(endpoint)
             if node.get("type") == "qemu":
-                time.sleep(10)
+                time.sleep(2)
             if node.get("type") == "vpcs":
                 time.sleep(1)
         except Exception as err:
             logger.error(f"Error starting node {node_name}: {err}")
         finally:
             client.logout()
+    # Give nodes a couple minutes to boot up before trying to load configs
+    print("All nodes have been started. Waiting a couple minutes for them to boot.")
+    time.sleep(120)
+
+
+def get_telnet_type(device_type: str) -> str:
+    """ Based on device template type return an appropriate string for the cconnect library to use for the console connection """
+    match device_type:
+        case "vpcs":
+            return ("vpcs", "", "")
+        case "veos":
+            return ("arista_eos_telnet", "admin", "")
+        case "vios":
+            return ("cisco_ios_telnet", "admin", "")
+        case _:
+            return ("linux_telnet", "", "")
 
 
 def load_base_configs(lab: str, lab_name: str, nodes: list):
@@ -377,14 +398,19 @@ def load_base_configs(lab: str, lab_name: str, nodes: list):
 
     for node in nodes:
         delay = 10
-        max_attempts = 30
+        max_attempts = 3
         node_name = node["name"]
         logger.info(f"Current node {node_name}")
         node_info = get_node_status(lab_name, node)
         logger.debug(f"Node status for node {node_name}: {node_info}")
         node_type = node_info.get("type")
+        logger.debug(f"Func - load_base_configs, Var node_type: {node_type}")
+        node_template = node_info.get("template")
+        logger.debug(f"Func - load_base_configs, Var node_template: {node_template}")
+        telnet_template, username, password = get_telnet_type(node_template)
         config_path = f"{lab}/configs/{node_name}.cfg"
         config_lines = utils.load_config(config_path)
+        logger.debug(f"Func - load_base_configs, Var config_lines: {config_lines}")
         if not config_lines:
             logger.info(f"No config file was found for {node_name}.")
             print("No config files were found for this lab")
@@ -400,24 +426,15 @@ def load_base_configs(lab: str, lab_name: str, nodes: list):
    
                 if node_info.get("eve_ip") and node_info.get("port"):
                 
-                    # Dynamically set connection settings based on node type
-                    if node_type == "vpcs":
-                        device_settings = {
-                            "device_ip": node_info["eve_ip"],
-                            "device_type": "vpcs",
-                            "port": node_info["port"],
-                            "username": "",
-                            "password": "",
-                            # VPCS has no username/password
-                        }
-                    else: # Default to qemu / Cisco IOS
-                        device_settings = {
-                            "device_ip": node_info["eve_ip"],
-                            "device_type": "cisco_ios_telnet",
-                            "port": node_info["port"],
-                            "username": "admin",
-                            "password": "cisco",
-                        }
+                    # Default to qemu / Cisco IOS
+                    device_settings = {
+                        "device_ip": node_info["eve_ip"],
+                        "device_type": telnet_template,
+                        "port": node_info["port"],
+                        "username": username,
+                        "password": password,
+                    }
+                    logger.debug(f"Func - load_base_configs, Var device_settings: {device_settings}")
 
                     device = connect.DeviceConnection(**device_settings)
 
@@ -481,19 +498,33 @@ def shutdown_lab(lab: str):
     """
     Core logic for shutting down a lab.
     """
-   
+    logger.debug(f"Func - shutdown_lab, Var - lab: {lab}")
     filename = f"{lab}/lab.toml"
-
-    lab_settings = utils.load_toml(str(filename))
-    lab_name = lab_settings["lab"]["name"]
-   
-    if not lab_name.endswith(".unl"):
-        lab_name = f"{lab_name}.unl"
-       
+    logger.debug(f"Func - shutdown_lab, Var - filename: {filename}")
+    lab_settings = get_lab_settings(lab)
+    logger.debug(f"Func - shutdown_lab, Var - lab_settings: {lab_settings}")
+    lab_data = lab_settings.get("lab", "")
+    lab_name = lab_data.get("name", "")
+    lab_path = lab_data.get("path", "")
+    full_lab_path = normalize_lab_path(lab_name, lab_path)
+    logger.debug(f"full_lab_path: {full_lab_path}")
     logger.info(f"Shutting down lab {lab_name}")
-    delete_lab(lab_name)
+    delete_lab(full_lab_path)
     logger.info(f"Removing state file {lab}")
     utils.remove_state_file()
+
+
+def normalize_lab_path(lab_name: str, lab_path: str = "") -> str:
+    """Ensures consistent, single-slash pathing without leading/trailing slashes."""
+    if not lab_name.endswith(".unl"):
+        lab_name = f"{lab_name}.unl"
+    
+    clean_path = lab_path.strip("/")
+    clean_name = lab_name.strip("/")
+    
+    if clean_path:
+        return clean_path + "/" + clean_name
+    return clean_name
 
 
 def _setup_lab(lab_folder: str, is_restart: bool = False):
@@ -502,13 +533,17 @@ def _setup_lab(lab_folder: str, is_restart: bool = False):
     """
     action_verb = "Restarting" if is_restart else "Loading"
     logger.info(f"{action_verb} lab.toml file from {lab_folder}")
-   
+
     try:
         lab_settings = get_lab_settings(lab_folder)
+        logger.debug(f"VAR: lab_settings -  {lab_settings}")
         lab_data = lab_settings.get("lab", [])
         lab_nodes = lab_settings.get("nodes", [])
         lab_cables = lab_settings.get("cables", [])
         lab_name = lab_data.get("name", "")
+        lab_path = lab_data.get("path", "")
+        full_lab_path = normalize_lab_path(lab_name, lab_path)
+        logger.debug(f"full_lab_path: {full_lab_path}")
 
         # Separate the nodes out based on the 'type' key
         qemu_nodes = [node for node in lab_nodes if node['type'] == 'qemu']
@@ -523,18 +558,18 @@ def _setup_lab(lab_folder: str, is_restart: bool = False):
             check_if_lab_exists(lab_name)
            
         create_lab(lab_data)
-        add_nodes(lab_name, lab_nodes)
-        connect_cables(lab_name, lab_cables)
+        add_nodes(full_lab_path, lab_nodes)
+        connect_cables(full_lab_path, lab_cables)
 
         # Boot up all qemu nodes first
         if qemu_nodes:
-            start_nodes(lab_name, qemu_nodes)
-            load_base_configs(lab_folder, lab_name, qemu_nodes)
+            start_nodes(full_lab_path, qemu_nodes)
+            load_base_configs(lab_folder, full_lab_path, qemu_nodes)
 
         # Boot VPCS last in case DHCP comes from qemu node
         if vpcs_nodes:
-            start_nodes(lab_name, vpcs_nodes)
-            load_base_configs(lab_folder, lab_name, vpcs_nodes)
+            start_nodes(full_lab_path, vpcs_nodes)
+            load_base_configs(lab_folder, full_lab_path, vpcs_nodes)
        
         # save_state only for loading a new lab
         if not is_restart:

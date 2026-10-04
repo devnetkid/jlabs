@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 def shutdown_lab():
     """Shuts down a lab and removes it from Eve-NG"""
     logger.info("Request made to shutdown lab")
-    logger.info("Ensure we have a state file before shutting down the lab")
+    logger.debug("Ensure we have a state file before shutting down the lab")
     
     state = utils.load_state()
     

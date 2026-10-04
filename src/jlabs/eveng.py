@@ -4,9 +4,12 @@ import os
 import sys
 import requests
 import urllib3
+import logging
 
 # Suppress insecure request warnings for EVE-NG Pro's self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+logger = logging.getLogger(__name__)
 
 class EveNgClient:
     def __init__(self):
@@ -23,19 +26,15 @@ class EveNgClient:
         self.username = os.getenv("JLABS_EVENG_USER", "admin")
         self.password = os.getenv("JLABS_EVENG_PASS", "eve")
 
+        self.base_url = f"{eve_target.rstrip('/')}/api"
+
         # Determine version based on the presence of 'https'
         self.is_pro = eve_target.lower().startswith("https")
-
-        # Safely construct the base URL
-        if eve_target.startswith("http"):
-            self.base_url = f"{eve_target.rstrip('/')}/api"
-        else:
-            self.base_url = f"http://{eve_target}/api"
 
         # Initialize session and disable SSL verification globally
         self.session = requests.Session()
         self.session.verify = False
-       
+
         # Store the user's specific folder path (populated during login)
         self.user_folder = ""
 
@@ -46,6 +45,7 @@ class EveNgClient:
        
         # Perform the actual login (POST request)
         login_url = f"{self.base_url}/auth/login"
+        logger.debug(f"VAR: login_url {login_url}")
         payload = {
             "username": user, 
             "password": pwd,
@@ -62,7 +62,9 @@ class EveNgClient:
        
         if auth_info_response.status_code == 200:
             session_data = auth_info_response.json().get("data", {})
+            logger.debug(f"Func: login, Var: session_data, {session_data}")
             self.user_folder = session_data.get("folder", "")
+            logger.debug(f"Func: login, Var: user_folder, {self.user_folder}")
         else:
             self.user_folder = ""
            
@@ -92,18 +94,8 @@ class EveNgClient:
         # Clean leading slashes
         lab_path_or_name = lab_path_or_name.lstrip("/")
 
-        # If you passed a direct path (e.g., "labs/user Labs/my_lab"), trust it!
-        if "/" in lab_path_or_name:
-            base_path = f"labs/{lab_path_or_name}"
-           
-        # Otherwise, rely on the dynamic user folder logic
-        else:
-            folder = self.user_folder.strip("/")
-            if self.is_pro and folder:
-                base_path = f"labs/{folder}/{lab_path_or_name}"
-            else:
-                base_path = f"labs/{lab_path_or_name}"
-
+        base_path = f"labs/{lab_path_or_name}"
+        
         # Append sub-endpoints like 'nodes' or 'topology' if requested
         if sub_endpoint:
             return f"{base_path}/{sub_endpoint.lstrip('/')}"
@@ -118,7 +110,9 @@ class EveNgClient:
         return response.json()
 
     def post(self, endpoint, data=None):
+        logger.debug(f"Func: post, Var: data, {data}")
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        logger.debug(f"Func: post, Var: url, {url}")
         response = self.session.post(url, json=data)
         response.raise_for_status()
         return response.json()
