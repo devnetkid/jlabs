@@ -33,17 +33,29 @@ def build_nodes_list(lab_nodes: dict) -> tuple[list, list]:
     return nodes, node_map
 
 
-def build_cable_list(lab_cables: list, node_map: list) -> list:
-    """Builds a list of cable connections from an existing eve-ng lab."""
-    node_lookup = {}
-    for node in node_map:
-        node_lookup.update(node)
+def build_networks_list(lab_networks: dict) -> tuple[list, list]:
+    """Builds a list of networks removing items that aren't needed to re-create the lab."""
+    networks = []
+    network_map = []
+    for network in lab_networks.values():
+        for key in ["uuid"]:
+            network.pop(key, None)
+        networks.append(network)
+        network_map.append({f"network{network['id']}": network["name"]})
+    return networks, network_map
+
+
+def build_cable_list(lab_cables: list, node_map: list, network_map: list = None) -> list:
+    """Builds a list of cable connections from an existing eve-ng lab using node and network maps."""
+    lookup = {}
+    for item in node_map + (network_map or []):
+        lookup.update(item)
 
     cables = []
     for cable in lab_cables:
         new_cable = {k: v for k, v in cable.items() if k != "network_id"}
-        new_cable["source"] = node_lookup.get(new_cable["source"], new_cable["source"])
-        new_cable["destination"] = node_lookup.get(
+        new_cable["source"] = lookup.get(new_cable["source"], new_cable["source"])
+        new_cable["destination"] = lookup.get(
             new_cable["destination"], new_cable["destination"]
         )
         cables.append(new_cable)
@@ -58,16 +70,17 @@ def create_toml(lab_name):
 
     try:
         client.login()
-       
-        # Refactored to use the dynamic get_lab_endpoint method
+        
         lab_endpoint = client.get_lab_endpoint(lab_name)
         nodes_endpoint = client.get_lab_endpoint(lab_name, "nodes")
+        networks_endpoint = client.get_lab_endpoint(lab_name, "networks")
         topology_endpoint = client.get_lab_endpoint(lab_name, "topology")
 
         lab_data = client.get(lab_endpoint).get("data")
         lab_nodes = client.get(nodes_endpoint).get("data", {})
+        lab_networks = client.get(networks_endpoint).get("data", {})
         lab_cables = client.get(topology_endpoint).get("data", [])
-       
+        
     except Exception as err:
         print(f"A network error occurred communicating with EVE-NG: \n{err}")
         return
@@ -79,9 +92,13 @@ def create_toml(lab_name):
         return
 
     toml_data["lab"] = define_lab_details(lab_data)
+    
     nodes, node_map = build_nodes_list(lab_nodes)
+    networks, network_map = build_networks_list(lab_networks)
+    
     toml_data["nodes"] = nodes
-    toml_data["cables"] = build_cable_list(lab_cables, node_map)
+    toml_data["networks"] = networks
+    toml_data["cables"] = build_cable_list(lab_cables, node_map, network_map)
 
     file_name = "lab.toml"
     utils.write_toml(file_name, toml_data)
