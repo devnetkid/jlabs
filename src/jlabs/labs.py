@@ -247,6 +247,24 @@ def add_nodes(lab_name, lab_nodes):
         client.logout()
 
 
+def add_networks(lab_name, lab_networks):
+    """Adding nodes to the Eve-NG lab as described in the toml config file"""
+    logger.debug(f"Adding networks {lab_networks} to the lab {lab_name}")
+    logger.info(f"Adding networks to the lab {lab_name}")
+    print(f"Adding the networks to lab {lab_name}")
+    try:
+        for network in lab_networks:
+            client.login()
+            networks_endpoint = client.get_lab_endpoint(lab_name, "networks")
+            client.post(networks_endpoint, network)
+        logger.info("Successfully added networks to the new lab.")
+        print(f"Successfully added networks for lab {lab_name}")
+    except Exception as err:
+        print(f"An error occurred creating the lab: \n{err}")
+    finally:
+        client.logout()
+
+
 def connect_cables(lab_name, lab_cables):
     """Connecting the requested cables per lab.toml file"""
     logger.info(f"Connecting requested cables for the lab {lab_name}")
@@ -388,7 +406,11 @@ def get_telnet_type(device_type: str) -> str:
         case "veos":
             return ("arista_eos_telnet", "admin", "")
         case "vios":
-            return ("cisco_ios_telnet", "admin", "")
+            return ("cisco_ios_telnet", "", "")
+        case "viosl2":
+            return ("cisco_ios_telnet", "", "")
+        case "fortinet":
+            return ("generic_termserver_telnet", "admin", "")
         case _:
             return ("linux_telnet", "", "")
 
@@ -539,6 +561,7 @@ def _setup_lab(lab_folder: str, is_restart: bool = False):
         logger.debug(f"VAR: lab_settings -  {lab_settings}")
         lab_data = lab_settings.get("lab", [])
         lab_nodes = lab_settings.get("nodes", [])
+        lab_networks = lab_settings.get("networks", [])
         lab_cables = lab_settings.get("cables", [])
         lab_name = lab_data.get("name", "")
         lab_path = lab_data.get("path", "")
@@ -559,6 +582,7 @@ def _setup_lab(lab_folder: str, is_restart: bool = False):
            
         create_lab(lab_data)
         add_nodes(full_lab_path, lab_nodes)
+        add_networks(full_lab_path, lab_networks)
         connect_cables(full_lab_path, lab_cables)
 
         # Boot up all qemu nodes first
