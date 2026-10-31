@@ -198,11 +198,17 @@ def colorme(msg, color):
         color (str): Sets the terminal color of msg
     """
     if color == "red":
-        wrapper = "\033[91m"
-    elif color == "blue":
-        wrapper = "\033[94m"
+        wrapper = "\033[31m"
     elif color == "green":
-        wrapper = "\033[92m"
+        wrapper = "\033[32m"
+    elif color == "yellow":
+        wrapper = "\033[33m"
+    elif color == "blue":
+        wrapper = "\033[34m"
+    elif color == "magenta":
+        wrapper = "\033[35m"
+    elif color == "cyan":
+        wrapper = "\033[36m"
     else:
         # Defaults to white if invalid color is given
         wrapper = "\033[47m"

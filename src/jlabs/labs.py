@@ -568,6 +568,19 @@ def _setup_lab(lab_folder: str, is_restart: bool = False):
         full_lab_path = normalize_lab_path(lab_name, lab_path)
         logger.debug(f"full_lab_path: {full_lab_path}")
 
+        # Prompt user to confirm that the path is correct
+        warn_msg = (f"You are about to create a new lab in the following directory: {full_lab_path}")
+        print(utils.colorme(warn_msg, "yellow"))
+        choice = input("Are you sure you want to continue? (y/n): ").strip().lower()
+        if choice in ['n', 'no']:
+            print("Operation cancelled")
+            return
+        elif choice in ['y', 'yes']:
+            print("Sticking with the current path...")
+        else:
+            print("Invalid input!")
+            return
+
         # Separate the nodes out based on the 'type' key
         qemu_nodes = [node for node in lab_nodes if node['type'] == 'qemu']
         vpcs_nodes = [node for node in lab_nodes if node['type'] == 'vpcs']
