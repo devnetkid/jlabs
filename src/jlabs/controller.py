@@ -123,6 +123,31 @@ def create_toml():
     input("Press [ENTER] to continue...")
 
 
+def create_alias():
+    """Create an alias file to be sourced for cli telnet access."""
+    logger.info("Request made to create telnet alias file")
+    logger.debug("Ensure we have a state file before attempting to create alias file")
+    
+    state = utils.load_state()
+    
+    # Safely check if state is None/empty, or if the key is missing
+    if not state or not state.get("last_lab_launched"):
+        logger.info("No state file found. Returning to the Labs Menu")
+        print("Current running lab not found, load a lab first.")
+        input("Press [ENTER] to continue...")
+        return  # Stop the function here so it doesn't crash below
+
+    # If we pass the check, we know 'state' is a dict and the lab exists
+    lab_name = state["last_lab_launched"]
+    lab_path = state["last_lab_path"]
+
+    # Restart lab
+    logger.info(f"Creating telnet aliases for {lab_name} at path {lab_path}")
+    labs.telnet_aliases(lab_path)
+
+    input("Press [ENTER] to continue...")
+
+
 def jlabs_exit():
     """Clears the screen, logs an exit message, and terminates jlabs."""
     logger.info("Request made to exit jlabs")
@@ -161,6 +186,7 @@ def tools_menu():
         menu_subtitle,
         [
             ("Create a lab file from an existing lab", create_toml),
+            ("Create an alias file for telnet access", create_alias),
             ("Return to the main menu", main_menu),
             ("Exit", jlabs_exit),
         ],

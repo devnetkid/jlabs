@@ -72,11 +72,12 @@ def load_state() -> dict:
         return {"last_lab_launched": None, "timestamp": None}
 
 
-def save_state(lab_name: str):
+def save_state(lab_name: str, lab_path: str):
     """Updates the state file with the most recently launched lab."""
     state_file = get_state_file_path()
     state_data = {
         "last_lab_launched": lab_name,
+        "last_lab_path": lab_path,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     try:

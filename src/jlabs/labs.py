@@ -536,6 +536,48 @@ def shutdown_lab(lab: str):
     utils.remove_state_file()
 
 
+def telnet_aliases(lab: str) -> list[str]:
+    """Fetches active nodes and returns a list of telnet alias commands."""
+    logger.info(f"Generating telnet aliases for active nodes in lab '{lab}'...")
+    aliases = []
+    
+    try:
+        client.login()
+        nodes_endpoint = client.get_lab_endpoint(lab, "nodes")
+        nodes_response = client.get(nodes_endpoint)
+        nodes = nodes_response.get("data", {})
+        
+        if not nodes:
+            logger.info("No nodes found in lab.")
+            return aliases
+
+        for node_id, node_data in nodes.items():
+            # In EVE-NG, status 2 means running
+            if node_data.get('status') == 2:
+                name = node_data.get('name')
+                url = node_data.get('url', '')
+                
+                if url:
+                    telnet_ip = url.split(":")[-2]
+                    telnet_port = url.split(":")[-1]
+                    
+                    if telnet_ip and "//" in telnet_ip:
+                        eve_ip = telnet_ip.lstrip("//")
+                    else:
+                        eve_ip = telnet_ip
+                        
+                    aliases.append(f"alias {name}='telnet {eve_ip} {telnet_port}'\n")
+                    
+    except Exception as err:
+        logger.error(f"Error fetching aliases from EVE-NG: {err}")
+        print("Warning: Could not retrieve aliases due to a network error.")
+    finally:
+        client.logout()
+        
+    if aliases:
+        utils.writelines_to_file(".eve_aliases_generated", aliases)
+
+
 def normalize_lab_path(lab_name: str, lab_path: str = "") -> str:
     """Ensures consistent, single-slash pathing without leading/trailing slashes."""
     if not lab_name.endswith(".unl"):
@@ -610,7 +652,7 @@ def _setup_lab(lab_folder: str, is_restart: bool = False):
        
         # save_state only for loading a new lab
         if not is_restart:
-            utils.save_state(lab_folder)
+            utils.save_state(lab_folder, full_lab_path)
            
     except Exception as e:
         action_lower = "restart" if is_restart else "load"
