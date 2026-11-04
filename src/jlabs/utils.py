@@ -180,14 +180,42 @@ def load_config(filename):
 
 
 def list_dir():
-    """List the contents of a specified directory"""
-    # Define base directories
+    """List folders that have no subdirectories other than 'configs'."""
     folders = []
     base_dir = Path.home() / "jlabs/labs"
-    fullpath = [item for item in base_dir.iterdir() if item.is_dir()]
-    for folder in fullpath:
-        folders.append(folder.name)
+
+    def traverse(directory):
+        # Gather all subdirectories inside the current folder
+        subdirs = [item for item in directory.iterdir() if item.is_dir()]
+        
+        # Check if there is any subdirectory that is NOT named 'configs'
+        has_other_subdirs = any(item.name != "configs" for item in subdirs)
+        
+        # Only add the current folder if it has no other subdirectories
+        # (and ensure we don't add the root base_dir itself)
+        if not has_other_subdirs and directory != base_dir:
+            folders.append(str(directory.relative_to(base_dir)))
+        
+        # Continue traversing into the subdirectories
+        for item in subdirs:
+            if item.name != "configs":
+                traverse(item)
+
+    if base_dir.exists():
+        traverse(base_dir)
+        
     return folders
+
+
+#def list_dir():
+#    """List the contents of a specified directory"""
+#    # Define base directories
+#    folders = []
+#    base_dir = Path.home() / "jlabs/labs"
+#    fullpath = [item for item in base_dir.iterdir() if item.is_dir()]
+#    for folder in fullpath:
+#        folders.append(folder.name)
+#    return folders
 
 
 def colorme(msg, color):
