@@ -6,6 +6,8 @@ import random
 import sys
 import time
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from jlabs import connect, eveng, utils
 
 logger = logging.getLogger(__name__)
@@ -385,6 +387,7 @@ def start_nodes(lab: str, nodes: list):
         try:
             client.login()
             client.get(endpoint)
+            # Short stagger to prevent slamming the EVE-NG host CPU
             if node.get("type") == "qemu":
                 time.sleep(2)
             if node.get("type") == "vpcs":
@@ -393,9 +396,8 @@ def start_nodes(lab: str, nodes: list):
             logger.error(f"Error starting node {node_name}: {err}")
         finally:
             client.logout()
-    # Give nodes a couple minutes to boot up before trying to load configs
-    print("All nodes have been started. Waiting a couple minutes for them to boot.")
-    time.sleep(120)
+            
+    print("All nodes in this batch have been started.")
 
 
 def get_telnet_type(device_type: str) -> str:
@@ -415,62 +417,97 @@ def get_telnet_type(device_type: str) -> str:
             return ("linux_telnet", "", "")
 
 
-def load_base_configs(lab: str, lab_name: str, nodes: list):
-    logger.info("Loading base configs...")
+def _push_config_task(lab: str, node_name: str, node_info: dict, telnet_template: str, username: str, password: str) -> str:
+    """Worker function that handles the Netmiko/Socket blocking connections."""
+    config_path = f"{lab}/configs/{node_name}.cfg"
+    config_lines = utils.load_config(config_path)
+    
+    if not config_lines:
+        return f"Skipped {node_name}: No config file found."
 
-    for node in nodes:
-        delay = 10
-        max_attempts = 3
-        node_name = node["name"]
-        logger.info(f"Current node {node_name}")
-        node_info = get_node_status(lab_name, node)
-        logger.debug(f"Node status for node {node_name}: {node_info}")
-        node_type = node_info.get("type")
-        logger.debug(f"Func - load_base_configs, Var node_type: {node_type}")
-        node_template = node_info.get("template")
-        logger.debug(f"Func - load_base_configs, Var node_template: {node_template}")
-        telnet_template, username, password = get_telnet_type(node_template)
-        config_path = f"{lab}/configs/{node_name}.cfg"
-        config_lines = utils.load_config(config_path)
-        logger.debug(f"Func - load_base_configs, Var config_lines: {config_lines}")
-        if not config_lines:
-            logger.info(f"No config file was found for {node_name}.")
-            print("No config files were found for this lab")
-            choice = input("Would you like to continue? [y/n]: ")
-            if choice != "y":
-                sys.exit(0)
-            else:
-                continue
-        else:
-            for attempt in range(1, max_attempts + 1):
-                logger.info(f"Attempt {attempt}: loading config for node {node_name}")
-                print(f"Waiting for node {node_info['name']} to complete booting ...")
-   
-                if node_info.get("eve_ip") and node_info.get("port"):
+    node_type = node_info.get("type")
+    
+    # VPCS boots instantly, QEMU takes time
+    max_attempts = 3 if node_type == "vpcs" else 18
+    delay = 2 if node_type == "vpcs" else 10
+
+    for attempt in range(1, max_attempts + 1):
+        if node_info.get("eve_ip") and node_info.get("port"):
+            device_settings = {
+                "device_ip": node_info["eve_ip"],
+                "device_type": telnet_template,
+                "port": node_info["port"],
+                "username": username,
+                "password": password,
+            }
+
+            # This creates a unique, thread-safe instance from your connect.py
+            device = connect.DeviceConnection(**device_settings)
+
+            try:
+                device.connect()
+                device.write_config(config_lines)
+                device.disconnect()
+                return f"Successfully loaded config for {node_name}"
                 
-                    # Default to qemu / Cisco IOS
-                    device_settings = {
-                        "device_ip": node_info["eve_ip"],
-                        "device_type": telnet_template,
-                        "port": node_info["port"],
-                        "username": username,
-                        "password": password,
-                    }
-                    logger.debug(f"Func - load_base_configs, Var device_settings: {device_settings}")
+            except Exception as e:
+                if attempt < max_attempts:
+                    time.sleep(delay)
+                else:
+                    return f"Failed to load config for {node_name} after {max_attempts} attempts. Error: {e}"
+    
+    return f"Failed to connect to {node_name} - missing IP or port."
 
-                    device = connect.DeviceConnection(**device_settings)
 
-                    try:
-                        device.connect()
-                        device.write_config(config_lines)
-                        device.disconnect()
-                        print(f"Successfully loaded config for {node_name}")
-                        break  # Success, exit retry loop
-                        
-                    except Exception as e:
-                        logger.debug(f"Telnet not ready yet for {node_name}: {e}")
+def load_base_configs(lab: str, lab_name: str, nodes: list):
+    """Dispatcher function that pre-fetches data, then runs config pushing concurrently."""
+    logger.info("Pre-fetching node statuses to avoid API race conditions...")
+    print("Gathering node connection details...")
+    
+    # 1. Fetch API data synchronously so the global 'client' doesn't break
+    prepared_tasks = []
+    for node in nodes:
+        node_name = node["name"]
+        node_info = get_node_status(lab_name, node)
+        node_template = node_info.get("template")
+        telnet_template, username, password = get_telnet_type(node_template)
+        
+        prepared_tasks.append({
+            "node_name": node_name,
+            "node_info": node_info,
+            "telnet_template": telnet_template,
+            "username": username,
+            "password": password
+        })
 
-                time.sleep(delay)
+    print("Pushing configurations concurrently...")
+    
+    # 2. Spin up threads strictly for the connect.py operations
+    with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
+        futures = {
+            executor.submit(
+                _push_config_task, 
+                lab, 
+                task["node_name"], 
+                task["node_info"], 
+                task["telnet_template"], 
+                task["username"], 
+                task["password"]
+            ): task["node_name"] 
+            for task in prepared_tasks
+        }
+        
+        # 3. Print results as each node finishes
+        for future in as_completed(futures):
+            node_name = futures[future]
+            try:
+                result_message = future.result()
+                print(result_message)
+                logger.info(result_message)
+            except Exception as exc:
+                error_msg = f"Node {node_name} generated an exception: {exc}"
+                print(error_msg)
+                logger.error(error_msg)
 
 
 def check_if_lab_exists(lab_name):
