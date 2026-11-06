@@ -72,49 +72,49 @@ class DeviceConnection:
                 
             self.connection.enable()
             self.current_prompt = self.connection.find_prompt()
-            print(f"Current prompt: {self.current_prompt}")
+            logger.debug(f"Current prompt: {self.current_prompt}")
             
         except NetmikoTimeoutException:
-            print(f"Unable to connect to {device_config['host']} on port {device_config['port']}")
+            logger.debug(f"Unable to connect to {device_config['host']} on port {device_config['port']}")
         except NetmikoAuthenticationException:
-            print("\nCONNECTION FAILED: Authentication error.\nPlease verify credentials.")
+            logger.debug("\nCONNECTION FAILED: Authentication error.\nPlease verify credentials.")
         except Exception as error:
-            print(f"\nCONNECTION FAILED: An unexpected error occurred:\n{error}")
+            logger.debug(f"\nCONNECTION FAILED: An unexpected error occurred:\n{error}")
     
     def _handle_fortigate_console(self):
         """Handles manual login override for FortiGate via EVE-NG terminal server."""
-        print("Connecting to FortiGate console via EVE-NG Telnet...")
+        logger.debug("Connecting to FortiGate console via EVE-NG Telnet...")
         
         # 1. Wake up the console line
         self.connection.write_channel("\n")
         time.sleep(1)
         output = self.connection.read_channel()
-        print(f"Sent an newline char, here is output:\n{output}")
+        logger.debug(f"Sent an newline char, here is output:\n{output}")
         
         # 2. Handle manual login prompt using instance credentials instead of hardcoded strings
         if "login:" in output or "Username:" in output:
-            print("Sending login credentials...{self.username} - {self.password}")
+            logger.debug("Sending login credentials...{self.username} - {self.password}")
             self.connection.write_channel(f"{self.username}\n")
             time.sleep(1)
             self.connection.write_channel(f"{self.password}\n")
             time.sleep(1)
             output = self.connection.read_channel()
-            print(f"Sent username and password, here is output:\n{output}")
-            print("Entering new password then confirming it")
+            logger.debug(f"Sent username and password, here is output:\n{output}")
+            logger.debug("Entering new password then confirming it")
             self.connection.write_channel("jlabs\n")
             time.sleep(1)
             self.connection.write_channel("jlabs\n")
             time.sleep(3)
             self.connection.write_channel("\n")
             output = self.connection.read_channel()
-            print(f"All done here is output:\n{output}")
+            logger.debug(f"All done here is output:\n{output}")
             self.connection.clear_buffer()
     
         # 3. Verify and verify session state
         if "#" in output or "$" in output:
-            print("Successfully logged in!")
+            logger.debug("Successfully logged in!")
         else:
-            print(f"Could not reach the command prompt. Current output:\n{output}")
+            logger.debug(f"Could not reach the command prompt. Current output:\n{output}")
 
 
     def disconnect(self):
@@ -152,7 +152,7 @@ class DeviceConnection:
         try:
             # HANDLE FORTIGATE VIA EVE-NG TELNET
             if self.device_type == "generic_termserver_telnet":
-                print("Sending configuration via terminal server channel...")
+                logger.debug("Sending configuration via terminal server channel...")
                 
                 # Disable paging safely using the raw write channel
                 self.connection.write_channel("config system console\nset output standard\nend\n")
@@ -161,7 +161,7 @@ class DeviceConnection:
                 
                 output = ""
                 for cmd in config:
-                    print(f"Sending line: {cmd}")
+                    logger.debug(f"Sending line: {cmd}")
                     # Write command directly to the stream
                     self.connection.write_channel(f"{cmd}\n")
                     
@@ -174,7 +174,7 @@ class DeviceConnection:
                 return output
                 
             # HANDLE NATIVE CISCO / OTHER SUPPORTED DEVICES
-            print("Sending configuration via native Netmiko engine...")
+            logger.debug("Sending configuration via native Netmiko engine...")
             return self.connection.send_config_set(config)
             
         except ReadTimeout:
