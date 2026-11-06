@@ -238,6 +238,11 @@ def add_nodes(lab_name, lab_nodes):
     print(f"Adding the nodes to lab {lab_name}")
     try:
         for node in lab_nodes:
+            # Force the node into a stopped state regardless of the TOML export
+            node["status"] = 0
+            # Strip out dynamic usage stats to keep the EVE-NG DB clean
+            node["cpu_usage"] = 0
+            node["ram_usage"] = 0
             client.login()
             nodes_endpoint = client.get_lab_endpoint(lab_name, "nodes")
             client.post(nodes_endpoint, node)
@@ -650,7 +655,7 @@ def _setup_lab(lab_folder: str, is_restart: bool = False):
         # Prompt user to confirm that the path is correct
         warn_msg = (f"You are about to create a new lab in the following directory: {full_lab_path}")
         print(utils.colorme(warn_msg, "yellow"))
-        choice = input("Are you sure you want to continue? (y/n): ").strip().lower()
+        choice = input("Are you sure you want to continue? (y/n) [y]: ").strip().lower() or 'y'
         if choice in ['n', 'no']:
             print("Operation cancelled")
             return

@@ -52,7 +52,7 @@ class DeviceConnection:
         except Exception as err:
             print(f"Unable to connect to VPCS {self.device_ip} on port {self.port}")
             raise err
-    
+
     def _connect_netmiko(self):
         """Establishes a Netmiko connection for network devices."""
         device_config = {
@@ -69,53 +69,64 @@ class DeviceConnection:
             
             if self.device_type == "generic_termserver_telnet":
                 self._handle_fortigate_console()
+                self.current_prompt = "#" # Set manually, skip enable()
+            else:
+                # Only use enable() on supported network devices (like Cisco/Arista)
+                self.connection.enable()
+                self.current_prompt = self.connection.find_prompt()
                 
-            self.connection.enable()
-            self.current_prompt = self.connection.find_prompt()
-            logger.debug(f"Current prompt: {self.current_prompt}")
-            
         except NetmikoTimeoutException:
-            logger.debug(f"Unable to connect to {device_config['host']} on port {device_config['port']}")
+            raise ValueError(f"Unable to connect to {device_config['host']} on port {device_config['port']}")
         except NetmikoAuthenticationException:
-            logger.debug("\nCONNECTION FAILED: Authentication error.\nPlease verify credentials.")
-        except Exception as error:
-            logger.debug(f"\nCONNECTION FAILED: An unexpected error occurred:\n{error}")
-    
+            raise ValueError("CONNECTION FAILED: Authentication error. Verify credentials.")
+
     def _handle_fortigate_console(self):
         """Handles manual login override for FortiGate via EVE-NG terminal server."""
-        logger.debug("Connecting to FortiGate console via EVE-NG Telnet...")
         
-        # 1. Wake up the console line
+        # 1. Clear any lingering garbage characters from the buffer, then wake it up
+        self.connection.clear_buffer()
         self.connection.write_channel("\n")
-        time.sleep(1)
-        output = self.connection.read_channel()
-        logger.debug(f"Sent an newline char, here is output:\n{output}")
         
-        # 2. Handle manual login prompt using instance credentials instead of hardcoded strings
-        if "login:" in output or "Username:" in output:
-            logger.debug("Sending login credentials...{self.username} - {self.password}")
-            self.connection.write_channel(f"{self.username}\n")
-            time.sleep(1)
-            self.connection.write_channel(f"{self.password}\n")
-            time.sleep(1)
-            output = self.connection.read_channel()
-            logger.debug(f"Sent username and password, here is output:\n{output}")
-            logger.debug("Entering new password then confirming it")
-            self.connection.write_channel("jlabs\n")
-            time.sleep(1)
-            self.connection.write_channel("jlabs\n")
-            time.sleep(3)
-            self.connection.write_channel("\n")
-            output = self.connection.read_channel()
-            logger.debug(f"All done here is output:\n{output}")
-            self.connection.clear_buffer()
-    
-        # 3. Verify and verify session state
-        if "#" in output or "$" in output:
-            logger.debug("Successfully logged in!")
-        else:
-            logger.debug(f"Could not reach the command prompt. Current output:\n{output}")
-
+        # 2. Enter a State Machine loop to handle prompts in ANY order
+        max_loops = 10
+        for attempt in range(max_loops):
+            try:
+                # Read the stream until we see ANY known FortiGate prompt
+                output = self.connection.read_until_pattern(
+                    pattern=r"(?i)(login:|username:|new password:|confirm password:|password:|accept|\(a/d\)|[#$])",
+                    read_timeout=10
+                )
+                
+                output_lower = output.lower()
+                
+                # Evaluate from most specific to least specific
+                if "new password:" in output_lower:
+                    self.connection.write_channel("jlabs\n")
+                    
+                elif "confirm password:" in output_lower:
+                    self.connection.write_channel("jlabs\n")
+                    
+                elif "password:" in output_lower:
+                    self.connection.write_channel(f"{self.password}\n")
+                    
+                elif "login:" in output_lower or "username:" in output_lower:
+                    self.connection.write_channel(f"{self.username}\n")
+                    
+                elif "accept" in output_lower or "(a/d)" in output_lower:
+                    self.connection.write_channel("a\n")
+                    
+                elif "#" in output_lower or "$" in output_lower:
+                    # We reached the final CLI prompt, setup is complete
+                    self.connection.clear_buffer()
+                    return 
+                    
+            except Exception as e:
+                # If we time out waiting for a prompt, the console might have gone to sleep.
+                # Send a carriage return to refresh the prompt and loop again.
+                self.connection.write_channel("\n")
+                
+        # If we exceed max_loops without hitting the return statement, something is fundamentally broken
+        raise ValueError("Failed to reach FortiGate CLI prompt. Stuck in a console loop or unresponsive.")
 
     def disconnect(self):
         """Disconnects from a lab device"""
