@@ -32,6 +32,30 @@ def shutdown_lab():
     input("Press [ENTER] to continue...")
 
 
+def restart_vpcs():
+    """Restart all the devices that have a type of vpcs"""
+    logger.info("Request made to restart vpcs devices")
+    logger.info("Making sure we have a state file before restarting vpcs")
+    
+    state = utils.load_state()
+    
+    # Safely check if state is None/empty, or if the key is missing
+    if not state or not state.get("last_lab_launched"):
+        logger.info("No state file found. Returning to the Labs Menu")
+        print("Current running lab not found, load a lab first.")
+        input("Press [ENTER] to continue...")
+        return  # Stop the function here so it doesn't crash below
+
+    # If we pass the check, we know 'state' is a dict and the lab exists
+    lab_name = state["last_lab_launched"]
+
+    # Restart lab
+    logger.info(f"Restarting vpcs devices found in {lab_name}")
+    labs.restart_vpcs(lab_name)
+
+    input("Press [ENTER] to continue...")   
+
+
 def restart_lab():
     """Restarts a lab with its base configs"""
     logger.info("Request made to restart lab")
@@ -165,6 +189,7 @@ def labs_menu():
         menu_subtitle,
         [
             ("Load a lab", load_lab),
+            ("Restart all devices of type vpcs", restart_vpcs),
             ("Restart lab with base configs", restart_lab),
             ("Inject a random issue to troubleshoot", tshoot_lab),
             ("Shutdown the current lab", shutdown_lab),

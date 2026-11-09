@@ -405,6 +405,74 @@ def start_nodes(lab: str, nodes: list):
     print("All nodes in this batch have been started.")
 
 
+def restart_vpcs(lab: str):
+    """Restarts all VPCS nodes in the specified lab."""
+    
+    # 1. Read the local TOML file to get the exact EVE-NG API path
+    try:
+        lab_settings = get_lab_settings(lab)
+        lab_data = lab_settings.get("lab", {})
+        lab_name = lab_data.get("name", "")
+        lab_path = lab_data.get("path", "")
+        
+        # Generates the required format for the API
+        full_lab_path = normalize_lab_path(lab_name, lab_path)
+    except Exception as e:
+        logger.error(f"Failed to load lab settings from {lab}: {e}")
+        print(f"Error: Could not read lab settings for local folder '{lab}'. {e}")
+        return
+
+    logger.info(f"Restarting all VPCS nodes in EVE-NG lab '{full_lab_path}'...")
+    print(f"Checking for VPCS nodes in lab '{full_lab_path}'...")
+
+    try:
+        client.login()
+        
+        # 2. Use the normalized full_lab_path for all API calls
+        nodes_endpoint = client.get_lab_endpoint(full_lab_path, "nodes")
+        nodes_response = client.get(nodes_endpoint)
+        nodes_data = nodes_response.get("data", {})
+
+        if not nodes_data:
+            print("No nodes found in this lab.")
+            return
+
+        # 3. Iterate through devices and look for VPCS instances
+        for node_id, node_info in nodes_data.items():
+            template = node_info.get("template")
+            name = node_info.get("name")
+            
+            # In EVE-NG, status 2 means running, 0 means stopped
+            status = node_info.get("status", 0) 
+
+            if template == "vpcs":
+                print(f"Found VPCS node: '{name}' (ID: {node_id})")
+
+                # --- Stop the Node ---
+                if status == 0:
+                    print("  -> Node is already stopped, skipping the stop command.")
+                else:
+                    print(f"  -> Stopping '{name}'...")
+                    stop_endpoint = client.get_lab_endpoint(full_lab_path, f"nodes/{node_id}/stop/stopmode=3")
+                    client.get(stop_endpoint)
+                    time.sleep(2)  # Give EVE-NG a moment to kill the process
+
+                # --- Start the Node ---
+                print(f"  -> Starting '{name}'...")
+                start_endpoint = client.get_lab_endpoint(full_lab_path, f"nodes/{node_id}/start")
+                client.get(start_endpoint)
+                
+        print("Finished restarting VPCS nodes.")
+
+    except Exception as err:
+        logger.error(f"Error communicating with EVE-NG while restarting VPCS nodes: {err}")
+        print(f"Error: Failed to restart VPCS nodes. {err}")
+        
+    finally:
+        # Ensure we always log out to prevent locking up EVE-NG sessions
+        client.logout()
+
+
 def get_telnet_type(device_type: str) -> str:
     """ Based on device template type return an appropriate string for the cconnect library to use for the console connection """
     match device_type:
